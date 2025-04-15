@@ -39,7 +39,7 @@ def __hess(func_n, x):
         for j in range(i, n):
             dxi = __basis_v(n, i)
             dxj = __basis_v(n, j)
-            result[i][j] = __approx_der(lambda t: __approx_der(func_n, t, dxi), x, dxj)
+            result[i][j] = __approx_der(lambda t: __approx_der(func_n, t, dxi), x, dxj, precision=1e-4)
         for j in range(i):
             result[i][j] = result[j][i]
     return result
@@ -127,13 +127,16 @@ def newton_descent(
         grd = __grad(func_n, x)
         hss = __hess(func_n, x)
         hss += tol * np.eye(len(x))
-        try:
-            direction = -np.linalg.solve(hss, grd)
-            if np.linalg.norm(direction) < tol:
-                return -grd
-            return direction
-        except np.linalg.LinAlgError:
+        if not np.allclose(hss, hss.T):
             return -grd
+        for k in range(1, hss.shape[0] + 1):
+            minor = hss[:k, :k]
+            if np.linalg.det(minor) <= 1e-10:
+                return -grd
+        direction = -np.linalg.solve(hss, grd)
+        if np.linalg.norm(direction) < tol:
+            return -grd
+        return direction
     return __descent(func_n, start, strategy, bounds, tol, max_iter, newton_direction)
 
 
@@ -184,7 +187,7 @@ def fixed_step(step):
     return lambda k, fu, ma: step if ma is None else min(ma, step)
 
 def polynomial_decay(alpha, beta):
-    return lambda k, fu, ma: 1 / np.sqrt(k + 1) / (beta * k + 1) ** alpha
+    return lambda k, fu, ma: min(ma, 1 / np.sqrt(k + 1) / (beta * k + 1) ** alpha)
 
 def wolfe_strategy(_, fu, ma):
     return wolfe(fu, amax=ma)
